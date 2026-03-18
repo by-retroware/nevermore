@@ -1087,78 +1087,85 @@ if __name__ == '__main__':
     
     # Функция запуска бота
     def run_bot():
-        # Создаем event loop для асинхронного кода
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # Создаем application
-        application = Application.builder().token(BOT_TOKEN).build()
-        
-        # Регистрация обработчиков команд
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("mute", mute))
-        application.add_handler(CommandHandler("unmute", unmute))
-        application.add_handler(CommandHandler("ban", ban))
-        application.add_handler(CommandHandler("warn", warn))
-        application.add_handler(CommandHandler("setname", setname))
-        application.add_handler(CommandHandler("giveaccess", giveaccess))
-        application.add_handler(CommandHandler("setprefix", setprefix))
-        application.add_handler(CommandHandler("nlist", nlist))
-        application.add_handler(CommandHandler("grank", grank))
-        application.add_handler(CommandHandler("gnick", gnick))
-        application.add_handler(CommandHandler("ranks", ranks))
-        application.add_handler(CommandHandler("warns", warns))
-        application.add_handler(CommandHandler("bans", bans))
-        application.add_handler(CommandHandler("mutelist", mutelist))
-        application.add_handler(CommandHandler("logs", logs))
-        application.add_handler(CommandHandler("all", all_command))
-        application.add_handler(CommandHandler("wedding", wedding))
-        application.add_handler(CommandHandler("weddings", weddings_list))
-        application.add_handler(CommandHandler("top", top))
-        application.add_handler(CommandHandler("me", me_action))
-        application.add_handler(CommandHandler("try", try_action))
-        application.add_handler(CommandHandler("kiss", kiss))
-        application.add_handler(CommandHandler("slap", slap))
-        application.add_handler(CommandHandler("hug", hug))
-        application.add_handler(CommandHandler("repplus", rep_plus))
-        application.add_handler(CommandHandler("repminus", rep_minus))
-        application.add_handler(CommandHandler("profile", profile))
-        application.add_handler(CommandHandler("info", info))
-        application.add_handler(CommandHandler("report", report))
-        application.add_handler(CommandHandler("check", check_user))
-        application.add_handler(CommandHandler("online", online))
-        application.add_handler(CommandHandler("gay", gay))
-        application.add_handler(CommandHandler("clown", clown))
-        application.add_handler(CommandHandler("wish", wish))
-        
-        # Обработчики сообщений
-        application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, update_last_online), group=1)
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_message_rules), group=2)
-        
-        # Инициализация БД
-        loop.run_until_complete(init_db())
-        print("✅ БД загружена, запускаем polling...")
-        
-        # Запуск бота
-        loop.run_until_complete(application.initialize())
-        loop.run_until_complete(application.start())
-        loop.run_until_complete(application.updater.start_polling())
-        
-        print("🤖 Бот работает 24/7!")
-        
-        # Держим бота запущенным
+        print("🚸 [run_bot] ПОТОК ЗАПУЩЕН!")  # ← ДОЛЖЕН БЫТЬ ОТСТУП (4 пробела)
+        import sys
+        sys.stdout.flush()
         try:
+            print("🚸 Создаём event loop...")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            print("✅ Event loop создан")
+
+            print("🚸 Создаём Application...")
+            application = Application.builder().token(BOT_TOKEN).build()
+            print("✅ Application создан")
+
+            print("🚸 Добавляем обработчики команд...")
+            application.add_handler(CommandHandler("start", start))
+            application.add_handler(CommandHandler("help", help_command))
+            application.add_handler(CommandHandler("mute", mute))
+            application.add_handler(CommandHandler("unmute", unmute))
+            application.add_handler(CommandHandler("ban", ban))
+            application.add_handler(CommandHandler("warn", warn))
+            application.add_handler(CommandHandler("setname", setname))
+            application.add_handler(CommandHandler("giveaccess", giveaccess))
+            application.add_handler(CommandHandler("setprefix", setprefix))
+            application.add_handler(CommandHandler("nlist", nlist))
+            application.add_handler(CommandHandler("grank", grank))
+            application.add_handler(CommandHandler("gnick", gnick))
+            application.add_handler(CommandHandler("ranks", ranks))
+            application.add_handler(CommandHandler("warns", warns))
+            application.add_handler(CommandHandler("bans", bans))
+            application.add_handler(CommandHandler("mutelist", mutelist))
+            application.add_handler(CommandHandler("logs", logs))
+            application.add_handler(CommandHandler("all", all_command))
+            application.add_handler(CommandHandler("wedding", wedding))
+            application.add_handler(CommandHandler("weddings", weddings_list))
+            application.add_handler(CommandHandler("top", top))
+            application.add_handler(CommandHandler("me", me_action))
+            application.add_handler(CommandHandler("try", try_action))
+            application.add_handler(CommandHandler("kiss", kiss))
+            application.add_handler(CommandHandler("slap", slap))
+            application.add_handler(CommandHandler("hug", hug))
+            application.add_handler(CommandHandler("repplus", rep_plus))
+            application.add_handler(CommandHandler("repminus", rep_minus))
+            application.add_handler(CommandHandler("profile", profile))
+            application.add_handler(CommandHandler("info", info))
+            application.add_handler(CommandHandler("report", report))
+            application.add_handler(CommandHandler("check", check_user))
+            application.add_handler(CommandHandler("online", online))
+            application.add_handler(CommandHandler("gay", gay))
+            application.add_handler(CommandHandler("clown", clown))
+            application.add_handler(CommandHandler("wish", wish))
+            
+            print("🚸 Добавляем обработчики сообщений...")
+            application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, update_last_online), group=1)
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_message_rules), group=2)
+            
+            print("✅ Все обработчики добавлены")
+
+            print("🚸 Инициализация БД...")
+            loop.run_until_complete(init_db())
+            print("✅ БД загружена, запускаем polling...")
+
+            print("🚸 Запуск application...")
+            loop.run_until_complete(application.initialize())
+            loop.run_until_complete(application.start())
+            loop.run_until_complete(application.updater.start_polling())
+            print("🤖 Бот работает 24/7!")
+
+            # Держим бота запущенным
             while True:
                 time.sleep(3600)
                 print("💾 Автосохранение БД...")
                 loop.run_until_complete(db.save())
-        except KeyboardInterrupt:
-            print("🛑 Останавливаем бота...")
-            loop.run_until_complete(application.updater.stop())
-            loop.run_until_complete(application.stop())
-            loop.run_until_complete(application.shutdown())
+
+        except Exception as e:
+            print(f"❌ КРИТИЧЕСКАЯ ОШИБКА В ПОТОКЕ БОТА: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.stdout.flush()
     
     # Запускаем бота в отдельном потоке
     bot_thread = threading.Thread(target=run_bot)
