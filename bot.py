@@ -876,9 +876,9 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         f"{EMOJI['info']} <b>Семья Nevermore</b>\n"
         f"━━━━━━━━━━━━━━━━\n"
-        f"👑 Лидер: @username_leader (замени)\n"
-        f"💬 Дискорд: https://discord.gg/...\n"
-        f"📢 Новости: https://t.me/famnevermore/...\n"
+        f"👑 Лидер: @nzaxscy)\n"
+        f"💬 Дискорд: https://discord.gg/5uWfYTvsKK\n"
+        f"📢 Новости: https://t.me/famnevermore/5\n"
         f"📖 Правила: https://t.me/famnevermore/26\n"
         f"🔑 Авторизация: https://t.me/famnevermore/19467\n\n"
         f"Бот создан для уюта и порядка в семье. Не забывай про уважение!"
@@ -1047,7 +1047,6 @@ async def check_message_rules(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     forbidden_patterns = [
-        (r'(ху[йи]|пизд|бля|ебать|сука|пидор)', 60, "Оскорбления"),
         (r'(18\+|порно|секс|эротика|голая)', 120, "Контент 18+"),
         (r'(твою мать|мама|папа|родители)', 120, "Упоминание родителей"),
         (r'(политик|война|путин|зеленский|сша|россия|украина)', 60, "Политика"),
@@ -1059,7 +1058,7 @@ async def check_message_rules(update: Update, context: ContextTypes.DEFAULT_TYPE
             db.add_mute(user_id, mute_time, f"Нарушение: {rule_name}")
             await update.message.reply_text(
                 f"{EMOJI['mute']} {update.effective_user.full_name}, вы замучены на {mute_minutes} минут за нарушение правил ({rule_name}).\n"
-                f"Правила: https://t.me/famnevermore/26"
+                f"Ознокомтесь с правилами!! Правила: https://t.me/famnevermore/26"
             )
             log_action(user_id, update.effective_user.username, f"auto-muted for {rule_name}")
             try:
