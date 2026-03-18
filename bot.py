@@ -1073,19 +1073,19 @@ if __name__ == '__main__':
     import threading
     from flask import Flask
     import time
-    
+
     # Создаем простой Flask сервер для Render
     app = Flask(__name__)
-    
+
     @app.route('/')
     def home():
         return "Nevermore Bot is running! 🤖"
-    
+
     @app.route('/health')
     def health():
         return "OK", 200
-    
-        # Функция запуска бота
+
+    # Функция запуска бота
     def run_bot():
         print("🚸 [run_bot] ПОТОК ЗАПУЩЕН!")
         import sys
@@ -1111,8 +1111,6 @@ if __name__ == '__main__':
                 traceback.print_exc()
                 sys.stdout.flush()
                 return
-
-            # ... остальной код без изменений ...
 
             print("🚸 Добавляем обработчики команд...")
             application.add_handler(CommandHandler("start", start))
@@ -1151,12 +1149,12 @@ if __name__ == '__main__':
             application.add_handler(CommandHandler("gay", gay))
             application.add_handler(CommandHandler("clown", clown))
             application.add_handler(CommandHandler("wish", wish))
-            
+
             print("🚸 Добавляем обработчики сообщений...")
             application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, update_last_online), group=1)
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_message_rules), group=2)
-            
+
             print("✅ Все обработчики добавлены")
 
             print("🚸 Инициализация БД...")
@@ -1180,12 +1178,12 @@ if __name__ == '__main__':
             import traceback
             traceback.print_exc()
             sys.stdout.flush()
-    
+
     # Запускаем бота в отдельном потоке
     bot_thread = threading.Thread(target=run_bot)
     bot_thread.daemon = True
     bot_thread.start()
-    
+
     # Запускаем Flask сервер на порту Render
     port = int(os.environ.get('PORT', 8080))
     print(f"🚀 Запускаем веб-сервер на порту {port}...")
