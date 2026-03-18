@@ -8,6 +8,10 @@ import sys
 from datetime import datetime, timedelta
 from collections import defaultdict
 
+# Фикс для Render (Python 3.14)
+if not hasattr(sys, 'setrecursionlimit'):
+    sys.setrecursionlimit = lambda x: None
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -27,7 +31,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 DB_CHANNEL_ID = int(os.environ.get('DB_CHANNEL_ID', '-1003883431431'))
 ADMIN_IDS = [int(id) for id in os.environ.get('ADMIN_IDS', '1784442476,1389740970,5695593671').split(',')]
 CHAT_ID = int(os.environ.get('CHAT_ID', '-1002501760414'))
-PORT = int(os.environ.get('PORT', 8080))  # Render даст порт сам
+PORT = int(os.environ.get('PORT', 8080))
 
 # Ранги (ключ: уровень, значение: название и описание)
 RANKS = {
@@ -144,7 +148,6 @@ class TelegramDB:
         except Exception as e:
             print(f"❌ Ошибка сохранения БД: {e}")
     
-    # --- Методы для работы с данными ---
     def get_user(self, user_id):
         return self.cache['users'].get(str(user_id))
     
@@ -243,7 +246,7 @@ async def init_db():
     db = TelegramDB(BOT_TOKEN, DB_CHANNEL_ID)
     await db.load()
 
-# --- Функции-помощники (без изменений) ---
+# --- Функции-помощники ---
 def get_user(user_id):
     return db.get_user(user_id)
 
@@ -293,75 +296,103 @@ def has_permission(user_id, required_rank):
     user_rank = get_user_rank(user_id)
     return user_rank >= required_rank
 
-# --- Все твои команды (welcome_new_member, mute, unmute, ban, warn, setname, giveaccess, setprefix, nlist, grank, gnick, ranks, warns, bans, mutelist, logs, all_command, wedding, weddings_list, top, me_action, try_action, kiss, slap, hug, rep_plus, rep_minus, profile, info, report, check_user, online, gay, clown, wish, help_command, check_message_rules, update_last_online, start) ---
-# Вставь сюда все функции команд из твоего кода (welcome_new_member, mute, unmute, ban, warn, setname, giveaccess, setprefix, nlist, grank, gnick, ranks, warns, bans, mutelist, logs, all_command, wedding, weddings_list, top, me_action, try_action, kiss, slap, hug, rep_plus, rep_minus, profile, info, report, check_user, online, gay, clown, wish, help_command, check_message_rules, update_last_online, start)
-# Они идут с 95-й строки и до конца, прямо перед "# --- Точка входа ---"
+# --- Команды ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        f"Привет! Я бот семьи Nevermore. {EMOJI['heart']}\n"
+        f"Добавь меня в группу и выдай права администратора для полноценной работы.\n"
+        f"В группе используй /help, чтобы узнать доступные команды."
+    )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_rank = get_user_rank(update.effective_user.id)
+    commands = {
+        2: [
+            "/profile - твоя карточка",
+            "/info - информация о семье",
+            "/gnick <ник> - установить ник",
+            "/top - топ репутации",
+            "/me - действие от 3-го лица",
+            "/try - попытаться сделать что-то",
+            "/kiss - поцеловать",
+            "/hug - обнять",
+            "/slap - дать пощечину",
+            "/gay - гей дня",
+            "/clown - клоун дня",
+            "/wish - пожелание",
+            "/repplus /repminus - репутация",
+            "/ranks - список рангов",
+            "/nlist - список ников",
+            "/wedding - предложить брак",
+            "/weddings - список браков",
+            "/report - пожаловаться",
+        ],
+        8: [
+            "/mute <причина> - замутить",
+            "/unmute - размутить",
+            "/warn <причина> - варн",
+            "/ban <причина> - бан",
+            "/setname <ник> - сменить ник юзеру",
+            "/setprefix <префикс> - дать префикс",
+            "/grank <ранг> - выдать игровой ранг (2-8)",
+            "/check - проверить пользователя",
+            "/logs - логи действий",
+        ],
+        9: [
+            "/giveaccess <8,9,10> - выдать админку",
+            "/all - обратиться ко всем",
+        ],
+        10: [
+            "/giveaccess <8,9,10> - выдать админку",
+            "/all - обратиться ко всем",
+        ],
+    }
+
+    text = f"{EMOJI['info']} <b>Доступные команды (твой ранг: {user_rank}):</b>\n\n"
+    shown = set()
+    for r in range(2, user_rank + 1):
+        if r in commands:
+            for cmd in commands[r]:
+                if cmd not in shown:
+                    text += cmd + "\n"
+                    shown.add(cmd)
+
+    if user_rank == 10:
+        text += "\n<i>Ты видишь все команды как лидер.</i>"
+
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+# --- Здесь должны быть все остальные команды (mute, unmute, ban, warn, setname, giveaccess, setprefix, nlist, grank, gnick, ranks, warns, bans, mutelist, logs, all_command, wedding, weddings_list, top, me_action, try_action, kiss, slap, hug, rep_plus, rep_minus, profile, info, report, check_user, online, gay, clown, wish, welcome_new_member, update_last_online, check_message_rules) ---
+# Вставь их сюда из своего старого кода (строки 95-1170)
 
 # --- Точка входа ---
 if __name__ == '__main__':
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # Регистрация обработчиков команд (скопируй этот блок из своего кода)
+    # Регистрация обработчиков команд (добавь все свои команды)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("mute", mute))
-    application.add_handler(CommandHandler("unmute", unmute))
-    application.add_handler(CommandHandler("ban", ban))
-    application.add_handler(CommandHandler("warn", warn))
-    application.add_handler(CommandHandler("setname", setname))
-    application.add_handler(CommandHandler("giveaccess", giveaccess))
-    application.add_handler(CommandHandler("setprefix", setprefix))
-    application.add_handler(CommandHandler("nlist", nlist))
-    application.add_handler(CommandHandler("grank", grank))
-    application.add_handler(CommandHandler("gnick", gnick))
-    application.add_handler(CommandHandler("ranks", ranks))
-    application.add_handler(CommandHandler("warns", warns))
-    application.add_handler(CommandHandler("bans", bans))
-    application.add_handler(CommandHandler("mutelist", mutelist))
-    application.add_handler(CommandHandler("logs", logs))
-    application.add_handler(CommandHandler("all", all_command))
-    application.add_handler(CommandHandler("wedding", wedding))
-    application.add_handler(CommandHandler("weddings", weddings_list))
-    application.add_handler(CommandHandler("top", top))
-    application.add_handler(CommandHandler("me", me_action))
-    application.add_handler(CommandHandler("try", try_action))
-    application.add_handler(CommandHandler("kiss", kiss))
-    application.add_handler(CommandHandler("slap", slap))
-    application.add_handler(CommandHandler("hug", hug))
-    application.add_handler(CommandHandler("repplus", rep_plus))
-    application.add_handler(CommandHandler("repminus", rep_minus))
-    application.add_handler(CommandHandler("profile", profile))
-    application.add_handler(CommandHandler("info", info))
-    application.add_handler(CommandHandler("report", report))
-    application.add_handler(CommandHandler("check", check_user))
-    application.add_handler(CommandHandler("online", online))
-    application.add_handler(CommandHandler("gay", gay))
-    application.add_handler(CommandHandler("clown", clown))
-    application.add_handler(CommandHandler("wish", wish))
+    # ... добавь остальные CommandHandler ...
 
     # Обработчики сообщений
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, update_last_online), group=1)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_message_rules), group=2)
+    # application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
+    # application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, update_last_online), group=1)
+    # application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_message_rules), group=2)
 
     # Запуск через вебхуки для Render
     async def run_webhook():
-        """Инициализация и запуск вебхуков"""
         global db
         print("🚀 Бот запускается на Render...")
         await init_db()
         print("✅ БД загружена, запускаем вебхуки...")
         
-        # Настройка вебхука
         await application.initialize()
         await application.start()
         
-        # Render даст свой URL
         webhook_url = os.environ.get('RENDER_EXTERNAL_URL')
         if not webhook_url:
             raise ValueError("❌ RENDER_EXTERNAL_URL не задан!")
         
-        # Устанавливаем вебхук
         await application.bot.set_webhook(
             url=f"{webhook_url}/webhook",
             allowed_updates=Update.ALL_TYPES,
@@ -371,11 +402,9 @@ if __name__ == '__main__':
         print(f"✅ Вебхук установлен на {webhook_url}/webhook")
         print("🤖 Бот готов к работе 24/7!")
 
-        # Бесконечное ожидание (бот работает постоянно)
         try:
             while True:
-                await asyncio.sleep(3600)  # Спим час, проверяем
-                # Сохраняем БД каждый час
+                await asyncio.sleep(3600)
                 print("💾 Автосохранение БД...")
                 await db.save()
         except KeyboardInterrupt:
@@ -385,5 +414,4 @@ if __name__ == '__main__':
             await application.shutdown()
             print("👋 Бот завершил работу.")
 
-    # Запускаем
     asyncio.run(run_webhook())
