@@ -1094,7 +1094,11 @@ if __name__ == '__main__':
             print("🚸 Создаём event loop...")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            print("✅ Event loop создан")
+
+            # 👇 ВОТ ЭТА МАГИЧЕСКАЯ СТРОЧКА 👇
+            asyncio.get_child_watcher().attach_loop(loop)
+
+            print("✅ Event loop создан и настроен")
 
             print("🚸 Создаём Application...")
             print(f"🚸 Используется токен (первые 5 символов): {BOT_TOKEN[:5]}...")
