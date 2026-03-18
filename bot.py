@@ -8,10 +8,6 @@ import sys
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-# Фикс для Render (Python 3.14)
-if not hasattr(sys, 'setrecursionlimit'):
-    sys.setrecursionlimit = lambda x: None
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -31,7 +27,6 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 DB_CHANNEL_ID = int(os.environ.get('DB_CHANNEL_ID', '-1003883431431'))
 ADMIN_IDS = [int(id) for id in os.environ.get('ADMIN_IDS', '1784442476,1389740970,5695593671').split(',')]
 CHAT_ID = int(os.environ.get('CHAT_ID', '-1002501760414'))
-PORT = int(os.environ.get('PORT', 8080))
 
 # Ранги
 RANKS = {
@@ -1068,127 +1063,80 @@ async def check_message_rules(update: Update, context: ContextTypes.DEFAULT_TYPE
             await db.save()
             break
 
-# --- Точка входа ---
+# --- ЗАПУСК ---
+async def main():
+    print("🚀 Бот запускается...")
+    
+    # Инициализируем БД
+    await init_db()
+    print("✅ БД загружена")
+    
+    # Создаем приложение
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    # Регистрируем обработчики
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("mute", mute))
+    application.add_handler(CommandHandler("unmute", unmute))
+    application.add_handler(CommandHandler("ban", ban))
+    application.add_handler(CommandHandler("warn", warn))
+    application.add_handler(CommandHandler("setname", setname))
+    application.add_handler(CommandHandler("giveaccess", giveaccess))
+    application.add_handler(CommandHandler("setprefix", setprefix))
+    application.add_handler(CommandHandler("nlist", nlist))
+    application.add_handler(CommandHandler("grank", grank))
+    application.add_handler(CommandHandler("gnick", gnick))
+    application.add_handler(CommandHandler("ranks", ranks))
+    application.add_handler(CommandHandler("warns", warns))
+    application.add_handler(CommandHandler("bans", bans))
+    application.add_handler(CommandHandler("mutelist", mutelist))
+    application.add_handler(CommandHandler("logs", logs))
+    application.add_handler(CommandHandler("all", all_command))
+    application.add_handler(CommandHandler("wedding", wedding))
+    application.add_handler(CommandHandler("weddings", weddings_list))
+    application.add_handler(CommandHandler("top", top))
+    application.add_handler(CommandHandler("me", me_action))
+    application.add_handler(CommandHandler("try", try_action))
+    application.add_handler(CommandHandler("kiss", kiss))
+    application.add_handler(CommandHandler("slap", slap))
+    application.add_handler(CommandHandler("hug", hug))
+    application.add_handler(CommandHandler("repplus", rep_plus))
+    application.add_handler(CommandHandler("repminus", rep_minus))
+    application.add_handler(CommandHandler("profile", profile))
+    application.add_handler(CommandHandler("info", info))
+    application.add_handler(CommandHandler("report", report))
+    application.add_handler(CommandHandler("check", check_user))
+    application.add_handler(CommandHandler("online", online))
+    application.add_handler(CommandHandler("gay", gay))
+    application.add_handler(CommandHandler("clown", clown))
+    application.add_handler(CommandHandler("wish", wish))
+    
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, update_last_online), group=1)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_message_rules), group=2)
+    
+    print("✅ Обработчики зарегистрированы")
+    
+    # Запускаем polling
+    print("🚀 Запускаем polling...")
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    
+    print("🤖 Бот работает 24/7!")
+    
+    # Держим бота запущенным
+    try:
+        while True:
+            await asyncio.sleep(3600)
+            print("💾 Автосохранение БД...")
+            await db.save()
+    except KeyboardInterrupt:
+        print("🛑 Останавливаем бота...")
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
+
 if __name__ == '__main__':
-    import threading
-    from flask import Flask
-    import time
-
-    # Создаем простой Flask сервер для Render
-    app = Flask(__name__)
-
-    @app.route('/')
-    def home():
-        return "Nevermore Bot is running! 🤖"
-
-    @app.route('/health')
-    def health():
-        return "OK", 200
-
-    # Функция запуска бота
-    def run_bot():
-        print("🚸 [run_bot] ПОТОК ЗАПУЩЕН!")
-        import sys
-        sys.stdout.flush()
-        try:
-            print("🚸 Создаём event loop...")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            # 👇 ВОТ ЭТА МАГИЧЕСКАЯ СТРОЧКА 👇
-            asyncio.get_child_watcher().attach_loop(loop)
-
-            print("✅ Event loop создан и настроен")
-
-            print("🚸 Создаём Application...")
-            print(f"🚸 Используется токен (первые 5 символов): {BOT_TOKEN[:5]}...")
-            try:
-                builder = Application.builder()
-                print("🚸 Builder создан")
-                builder = builder.token(BOT_TOKEN)
-                print("🚸 Токен добавлен в builder")
-                application = builder.build()
-                print("✅ Application создан")
-            except Exception as e:
-                print(f"❌ ОШИБКА ПРИ СОЗДАНИИ APPLICATION: {e}")
-                import traceback
-                traceback.print_exc()
-                sys.stdout.flush()
-                return
-
-            print("🚸 Добавляем обработчики команд...")
-            application.add_handler(CommandHandler("start", start))
-            application.add_handler(CommandHandler("help", help_command))
-            application.add_handler(CommandHandler("mute", mute))
-            application.add_handler(CommandHandler("unmute", unmute))
-            application.add_handler(CommandHandler("ban", ban))
-            application.add_handler(CommandHandler("warn", warn))
-            application.add_handler(CommandHandler("setname", setname))
-            application.add_handler(CommandHandler("giveaccess", giveaccess))
-            application.add_handler(CommandHandler("setprefix", setprefix))
-            application.add_handler(CommandHandler("nlist", nlist))
-            application.add_handler(CommandHandler("grank", grank))
-            application.add_handler(CommandHandler("gnick", gnick))
-            application.add_handler(CommandHandler("ranks", ranks))
-            application.add_handler(CommandHandler("warns", warns))
-            application.add_handler(CommandHandler("bans", bans))
-            application.add_handler(CommandHandler("mutelist", mutelist))
-            application.add_handler(CommandHandler("logs", logs))
-            application.add_handler(CommandHandler("all", all_command))
-            application.add_handler(CommandHandler("wedding", wedding))
-            application.add_handler(CommandHandler("weddings", weddings_list))
-            application.add_handler(CommandHandler("top", top))
-            application.add_handler(CommandHandler("me", me_action))
-            application.add_handler(CommandHandler("try", try_action))
-            application.add_handler(CommandHandler("kiss", kiss))
-            application.add_handler(CommandHandler("slap", slap))
-            application.add_handler(CommandHandler("hug", hug))
-            application.add_handler(CommandHandler("repplus", rep_plus))
-            application.add_handler(CommandHandler("repminus", rep_minus))
-            application.add_handler(CommandHandler("profile", profile))
-            application.add_handler(CommandHandler("info", info))
-            application.add_handler(CommandHandler("report", report))
-            application.add_handler(CommandHandler("check", check_user))
-            application.add_handler(CommandHandler("online", online))
-            application.add_handler(CommandHandler("gay", gay))
-            application.add_handler(CommandHandler("clown", clown))
-            application.add_handler(CommandHandler("wish", wish))
-
-            print("🚸 Добавляем обработчики сообщений...")
-            application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, update_last_online), group=1)
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_message_rules), group=2)
-
-            print("✅ Все обработчики добавлены")
-
-            print("🚸 Инициализация БД...")
-            loop.run_until_complete(init_db())
-            print("✅ БД загружена, запускаем polling...")
-
-            print("🚸 Запуск application...")
-            loop.run_until_complete(application.initialize())
-            loop.run_until_complete(application.start())
-            loop.run_until_complete(application.updater.start_polling())
-            print("🤖 Бот работает 24/7!")
-
-            # Держим бота запущенным
-            while True:
-                time.sleep(3600)
-                print("💾 Автосохранение БД...")
-                loop.run_until_complete(db.save())
-
-        except Exception as e:
-            print(f"❌ КРИТИЧЕСКАЯ ОШИБКА В ПОТОКЕ БОТА: {e}")
-            import traceback
-            traceback.print_exc()
-            sys.stdout.flush()
-
-    # Запускаем бота в отдельном потоке
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.daemon = True
-    bot_thread.start()
-
-    # Запускаем Flask сервер на порту Render
-    port = int(os.environ.get('PORT', 8080))
-    print(f"🚀 Запускаем веб-сервер на порту {port}...")
-    app.run(host='0.0.0.0', port=port)
+    asyncio.run(main())
