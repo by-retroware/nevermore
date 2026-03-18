@@ -25,7 +25,7 @@ from telegram.error import TelegramError
 # --- Настройки ---
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 DB_CHANNEL_ID = int(os.environ.get('DB_CHANNEL_ID', '-1003883431431'))
-ADMIN_IDS = [int(id) for id in os.environ.get('ADMIN_IDS', '1784442476,1389740970,5695593671').split(',')]
+ADMIN_IDS = [int(id) for id in os.environ.get('ADMIN_IDS','5695593671').split(',')]
 CHAT_ID = int(os.environ.get('CHAT_ID', '-1002501760414'))
 
 # Ранги
