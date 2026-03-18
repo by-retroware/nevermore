@@ -1095,10 +1095,16 @@ if __name__ == '__main__':
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             print("✅ Event loop создан")
-
             print("🚸 Создаём Application...")
-            application = Application.builder().token(BOT_TOKEN).build()
-            print("✅ Application создан")
+            try:
+                application = Application.builder().token(BOT_TOKEN).build()
+                print("✅ Application создан")
+            except Exception as e:
+                print(f"❌ ОШИБКА ПРИ СОЗДАНИИ APPLICATION: {e}")
+                import traceback
+                traceback.print_exc()
+                sys.stdout.flush()
+                return  # Выходим из функции, чтобы не продолжать
 
             print("🚸 Добавляем обработчики команд...")
             application.add_handler(CommandHandler("start", start))
