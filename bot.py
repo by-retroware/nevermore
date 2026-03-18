@@ -1071,84 +1071,102 @@ async def check_message_rules(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # --- Точка входа ---
 if __name__ == '__main__':
-    application = Application.builder().token(BOT_TOKEN).build()
-
-    # Регистрация обработчиков команд
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("mute", mute))
-    application.add_handler(CommandHandler("unmute", unmute))
-    application.add_handler(CommandHandler("ban", ban))
-    application.add_handler(CommandHandler("warn", warn))
-    application.add_handler(CommandHandler("setname", setname))
-    application.add_handler(CommandHandler("giveaccess", giveaccess))
-    application.add_handler(CommandHandler("setprefix", setprefix))
-    application.add_handler(CommandHandler("nlist", nlist))
-    application.add_handler(CommandHandler("grank", grank))
-    application.add_handler(CommandHandler("gnick", gnick))
-    application.add_handler(CommandHandler("ranks", ranks))
-    application.add_handler(CommandHandler("warns", warns))
-    application.add_handler(CommandHandler("bans", bans))
-    application.add_handler(CommandHandler("mutelist", mutelist))
-    application.add_handler(CommandHandler("logs", logs))
-    application.add_handler(CommandHandler("all", all_command))
-    application.add_handler(CommandHandler("wedding", wedding))
-    application.add_handler(CommandHandler("weddings", weddings_list))
-    application.add_handler(CommandHandler("top", top))
-    application.add_handler(CommandHandler("me", me_action))
-    application.add_handler(CommandHandler("try", try_action))
-    application.add_handler(CommandHandler("kiss", kiss))
-    application.add_handler(CommandHandler("slap", slap))
-    application.add_handler(CommandHandler("hug", hug))
-    application.add_handler(CommandHandler("repplus", rep_plus))
-    application.add_handler(CommandHandler("repminus", rep_minus))
-    application.add_handler(CommandHandler("profile", profile))
-    application.add_handler(CommandHandler("info", info))
-    application.add_handler(CommandHandler("report", report))
-    application.add_handler(CommandHandler("check", check_user))
-    application.add_handler(CommandHandler("online", online))
-    application.add_handler(CommandHandler("gay", gay))
-    application.add_handler(CommandHandler("clown", clown))
-    application.add_handler(CommandHandler("wish", wish))
-
-    # Обработчики сообщений
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, update_last_online), group=1)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_message_rules), group=2)
-
-    # Запуск через вебхуки для Render
-    async def run_webhook():
-        global db
-        print("🚀 Бот запускается на Render...")
-        await init_db()
-        print("✅ БД загружена, запускаем вебхуки...")
+    import threading
+    from flask import Flask
+    import time
+    
+    # Создаем простой Flask сервер для Render
+    app = Flask(__name__)
+    
+    @app.route('/')
+    def home():
+        return "Nevermore Bot is running! 🤖"
+    
+    @app.route('/health')
+    def health():
+        return "OK", 200
+    
+    # Функция запуска бота
+    def run_bot():
+        # Создаем event loop для асинхронного кода
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         
-        await application.initialize()
-        await application.start()
+        # Создаем application
+        application = Application.builder().token(BOT_TOKEN).build()
         
-        webhook_url = os.environ.get('RENDER_EXTERNAL_URL')
-        if not webhook_url:
-            raise ValueError("❌ RENDER_EXTERNAL_URL не задан!")
+        # Регистрация обработчиков команд
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("mute", mute))
+        application.add_handler(CommandHandler("unmute", unmute))
+        application.add_handler(CommandHandler("ban", ban))
+        application.add_handler(CommandHandler("warn", warn))
+        application.add_handler(CommandHandler("setname", setname))
+        application.add_handler(CommandHandler("giveaccess", giveaccess))
+        application.add_handler(CommandHandler("setprefix", setprefix))
+        application.add_handler(CommandHandler("nlist", nlist))
+        application.add_handler(CommandHandler("grank", grank))
+        application.add_handler(CommandHandler("gnick", gnick))
+        application.add_handler(CommandHandler("ranks", ranks))
+        application.add_handler(CommandHandler("warns", warns))
+        application.add_handler(CommandHandler("bans", bans))
+        application.add_handler(CommandHandler("mutelist", mutelist))
+        application.add_handler(CommandHandler("logs", logs))
+        application.add_handler(CommandHandler("all", all_command))
+        application.add_handler(CommandHandler("wedding", wedding))
+        application.add_handler(CommandHandler("weddings", weddings_list))
+        application.add_handler(CommandHandler("top", top))
+        application.add_handler(CommandHandler("me", me_action))
+        application.add_handler(CommandHandler("try", try_action))
+        application.add_handler(CommandHandler("kiss", kiss))
+        application.add_handler(CommandHandler("slap", slap))
+        application.add_handler(CommandHandler("hug", hug))
+        application.add_handler(CommandHandler("repplus", rep_plus))
+        application.add_handler(CommandHandler("repminus", rep_minus))
+        application.add_handler(CommandHandler("profile", profile))
+        application.add_handler(CommandHandler("info", info))
+        application.add_handler(CommandHandler("report", report))
+        application.add_handler(CommandHandler("check", check_user))
+        application.add_handler(CommandHandler("online", online))
+        application.add_handler(CommandHandler("gay", gay))
+        application.add_handler(CommandHandler("clown", clown))
+        application.add_handler(CommandHandler("wish", wish))
         
-        await application.bot.set_webhook(
-            url=f"{webhook_url}/webhook",
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=True
-        )
+        # Обработчики сообщений
+        application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, update_last_online), group=1)
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_message_rules), group=2)
         
-        print(f"✅ Вебхук установлен на {webhook_url}/webhook")
-        print("🤖 Бот готов к работе 24/7!")
-
+        # Инициализация БД
+        loop.run_until_complete(init_db())
+        print("✅ БД загружена, запускаем polling...")
+        
+        # Запуск бота
+        loop.run_until_complete(application.initialize())
+        loop.run_until_complete(application.start())
+        loop.run_until_complete(application.updater.start_polling())
+        
+        print("🤖 Бот работает 24/7!")
+        
+        # Держим бота запущенным
         try:
             while True:
-                await asyncio.sleep(3600)
+                time.sleep(3600)
                 print("💾 Автосохранение БД...")
-                await db.save()
+                loop.run_until_complete(db.save())
         except KeyboardInterrupt:
             print("🛑 Останавливаем бота...")
-            await application.bot.delete_webhook()
-            await application.stop()
-            await application.shutdown()
-            print("👋 Бот завершил работу.")
-
-    asyncio.run(run_webhook())
+            loop.run_until_complete(application.updater.stop())
+            loop.run_until_complete(application.stop())
+            loop.run_until_complete(application.shutdown())
+    
+    # Запускаем бота в отдельном потоке
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
+    
+    # Запускаем Flask сервер на порту Render
+    port = int(os.environ.get('PORT', 8080))
+    print(f"🚀 Запускаем веб-сервер на порту {port}...")
+    app.run(host='0.0.0.0', port=port)
