@@ -1085,9 +1085,9 @@ if __name__ == '__main__':
     def health():
         return "OK", 200
     
-    # Функция запуска бота
+        # Функция запуска бота
     def run_bot():
-        print("🚸 [run_bot] ПОТОК ЗАПУЩЕН!")  # ← ДОЛЖЕН БЫТЬ ОТСТУП (4 пробела)
+        print("🚸 [run_bot] ПОТОК ЗАПУЩЕН!")
         import sys
         sys.stdout.flush()
         try:
@@ -1095,16 +1095,24 @@ if __name__ == '__main__':
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             print("✅ Event loop создан")
+
             print("🚸 Создаём Application...")
+            print(f"🚸 Используется токен (первые 5 символов): {BOT_TOKEN[:5]}...")
             try:
-                application = Application.builder().token(BOT_TOKEN).build()
+                builder = Application.builder()
+                print("🚸 Builder создан")
+                builder = builder.token(BOT_TOKEN)
+                print("🚸 Токен добавлен в builder")
+                application = builder.build()
                 print("✅ Application создан")
             except Exception as e:
                 print(f"❌ ОШИБКА ПРИ СОЗДАНИИ APPLICATION: {e}")
                 import traceback
                 traceback.print_exc()
                 sys.stdout.flush()
-                return  # Выходим из функции, чтобы не продолжать
+                return
+
+            # ... остальной код без изменений ...
 
             print("🚸 Добавляем обработчики команд...")
             application.add_handler(CommandHandler("start", start))
