@@ -2,7 +2,7 @@ services:
 - type: web
   name: nevermore-bot
   runtime: python
-  pythonVersion: 3.11.9 
+  pythonVersion: 3.11.9
   buildCommand: pip install -r requirements.txt
   startCommand: python bot.py
   healthCheckPath: /healthcheck
@@ -12,7 +12,7 @@ services:
   - key: ADMIN_IDS
     value: 5695593671
   - key: CHAT_ID
-    value: -1002501760414  # ← твой ID чата
+    value: -1002501760414
   - key: DB_PATH
     value: /opt/render/project/src/data/bot.db
   disk:
