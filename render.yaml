@@ -1,16 +1,20 @@
 services:
-  - type: web
-    name: nevermore-bot
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
-    healthCheckPath: /healthcheck
-    envVars:
-      - key: BOT_TOKEN
-        sync: false
-      - key: DB_CHANNEL_ID
-        value: -1003883431431
-      - key: ADMIN_IDS
-        value: 1784442476,1389740970,5695593671
-      - key: CHAT_ID
-        value: -1002501760414
+- type: web
+  name: nevermore-bot
+  runtime: python
+  buildCommand: pip install -r requirements.txt
+  startCommand: python bot.py
+  healthCheckPath: /healthcheck
+  envVars:
+  - key: BOT_TOKEN
+    sync: false
+  - key: ADMIN_IDS
+    value: 5695593671
+  - key: CHAT_ID
+    value: 2501760414  # ← твой ID чата
+  - key: DB_PATH
+    value: /opt/render/project/src/data/bot.db
+  disk:
+    name: sqlite-data
+    mountPath: /opt/render/project/src/data
+    sizeGB: 1
