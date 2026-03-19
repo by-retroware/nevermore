@@ -11,7 +11,7 @@ services:
   - key: ADMIN_IDS
     value: 5695593671
   - key: CHAT_ID
-    value: 2501760414  # ← твой ID чата
+    value: -1002501760414  # ← твой ID чата
   - key: DB_PATH
     value: /opt/render/project/src/data/bot.db
   disk:
