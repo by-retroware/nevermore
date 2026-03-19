@@ -12,8 +12,8 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-BOT_TOKEN = os.getenv("8702619122:AAGkrADExDJjBl58r7w8e9mNm7MEOtBKANk")
-DATABASE_URL = os.getenv("postgresql://nevermore_db_ac4y_user:2CN24oXaV5olewll20Aj8nVppn1VSHfU@dpg-d6tu207gi27c73du2ag0-a.frankfurt-postgres.render.com/nevermore_db_ac4y")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 ADMINS = {5695593671
 , 1784442476
