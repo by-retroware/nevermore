@@ -15,9 +15,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-ADMINS = {5695593671
-, 1784442476
-}
+ADMINS = {5695593671, 1784442476}
 
 pool = None
 
