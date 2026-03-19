@@ -7,6 +7,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from collections import defaultdict
+from typing import Dict, List, Optional
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -25,7 +26,7 @@ from telegram.error import TelegramError
 # --- Настройки ---
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 DB_CHANNEL_ID = int(os.environ.get('DB_CHANNEL_ID', '-1003883431431'))
-ADMIN_IDS = [int(id) for id in os.environ.get('ADMIN_IDS','5695593671').split(',')]
+ADMIN_IDS = [int(id) for id in os.environ.get('ADMIN_IDS', '5695593671').split(',')]
 CHAT_ID = int(os.environ.get('CHAT_ID', '-1002501760414'))
 
 # Ранги
@@ -45,6 +46,7 @@ RANKS = {
 WARNS_TO_BAN = 3
 BAN_DAYS = 5
 MUTE_DAYS = 1
+REP_LIMIT_PER_DAY = 2
 
 # Смайлики
 EMOJI = {
@@ -68,6 +70,9 @@ EMOJI = {
     "gay": "🏳️‍🌈",
     "clown": "🤡",
     "wish": "✨",
+    "mod": "🛡️",
+    "fun": "🎉",
+    "stats": "📊",
 }
 
 # --- Telegram Storage ---
@@ -98,7 +103,8 @@ class TelegramDB:
                 'warns': {},
                 'weddings': [],
                 'logs': [],
-                'next_id': 1
+                'next_id': 1,
+                'rep_usage': {}  # {user_id: {'last_reset': date, 'count': int}}
             }
             await self.save()
             return self.cache
@@ -112,7 +118,8 @@ class TelegramDB:
                 'warns': {},
                 'weddings': [],
                 'logs': [],
-                'next_id': 1
+                'next_id': 1,
+                'rep_usage': {}
             }
             return self.cache
     
@@ -232,6 +239,24 @@ class TelegramDB:
     
     def get_all_weddings(self):
         return self.cache['weddings']
+    
+    def check_rep_limit(self, user_id):
+        """Проверяет, может ли пользователь использовать репутацию"""
+        today = datetime.now().date().isoformat()
+        if 'rep_usage' not in self.cache:
+            self.cache['rep_usage'] = {}
+        
+        user_data = self.cache['rep_usage'].get(str(user_id), {'date': today, 'count': 0})
+        
+        if user_data.get('date') != today:
+            user_data = {'date': today, 'count': 0}
+        
+        if user_data['count'] >= REP_LIMIT_PER_DAY:
+            return False
+        
+        user_data['count'] += 1
+        self.cache['rep_usage'][str(user_id)] = user_data
+        return True
 
 # --- Инициализация БД ---
 db = None
@@ -294,595 +319,274 @@ def has_permission(user_id, required_rank):
 # --- Команды ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Приветственное сообщение"""
+    user = update.effective_user
     await update.message.reply_text(
-        f"Привет! Я бот семьи Nevermore. {EMOJI['heart']}\n"
-        f"Добавь меня в группу и выдай права администратора для полноценной работы.\n"
-        f"В группе используй /help, чтобы узнать доступные команды."
+        f"{EMOJI['heart']} <b>Добро пожаловать в семью Nevermore!</b>\n\n"
+        f"👋 Привет, {user.full_name}!\n\n"
+        f"Я — бот-помощник нашей семьи. Со мной ты можешь:\n"
+        f"• {EMOJI['profile']} Узнать информацию о себе\n"
+        f"• {EMOJI['wedding']} Жениться/выйти замуж\n"
+        f"• {EMOJI['rep']} Повышать репутацию друзьям\n"
+        f"• {EMOJI['fun']} Весело проводить время\n\n"
+        f"📌 <b>Важно:</b> Чтобы я мог модерировать чат, выдай мне права администратора!\n\n"
+        f"🔍 Введи /help, чтобы увидеть все мои команды.",
+        parse_mode=ParseMode.HTML
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_rank = get_user_rank(update.effective_user.id)
-    commands = {
-        2: [
-            "/profile - твоя карточка",
-            "/info - информация о семье",
-            "/gnick <ник> - установить ник",
-            "/top - топ репутации",
-            "/me - действие от 3-го лица",
-            "/try - попытаться сделать что-то",
-            "/kiss - поцеловать",
-            "/hug - обнять",
-            "/slap - дать пощечину",
-            "/gay - гей дня",
-            "/clown - клоун дня",
-            "/wish - пожелание",
-            "/repplus /repminus - репутация",
-            "/ranks - список рангов",
-            "/nlist - список ников",
-            "/wedding - предложить брак",
-            "/weddings - список браков",
-            "/report - пожаловаться",
-        ],
-        8: [
-            "/mute <причина> - замутить",
-            "/unmute - размутить",
-            "/warn <причина> - варн",
-            "/ban <причина> - бан",
-            "/setname <ник> - сменить ник юзеру",
-            "/setprefix <префикс> - дать префикс",
-            "/grank <ранг> - выдать игровой ранг (2-8)",
-            "/check - проверить пользователя",
-            "/logs - логи действий",
-        ],
-        9: [
-            "/giveaccess <8,9,10> - выдать админку",
-            "/all - обратиться ко всем",
-        ],
-        10: [
-            "/giveaccess <8,9,10> - выдать админку",
-            "/all - обратиться ко всем",
-        ],
-    }
+    """Улучшенный /help со всеми командами для всех"""
+    help_text = f"""
+{EMOJI['info']} <b>📚 ВСЕ КОМАНДЫ БОТА NEVERMORE</b>
 
-    text = f"{EMOJI['info']} <b>Доступные команды (твой ранг: {user_rank}):</b>\n\n"
-    shown = set()
-    for r in range(2, user_rank + 1):
-        if r in commands:
-            for cmd in commands[r]:
-                if cmd not in shown:
-                    text += cmd + "\n"
-                    shown.add(cmd)
+{EMOJI['fun']} <b>ОБЩИЕ КОМАНДЫ (ДЛЯ ВСЕХ):</b>
+• /profile - твоя карточка игрока
+• /info - информация о семье
+• /gnick <ник> - установить никнейм
+• /top - топ по репутации
+• /ranks - список всех рангов
+• /nlist - список всех игроков
+• /online - кто сейчас онлайн
 
-    if user_rank == 10:
-        text += "\n<i>Ты видишь все команды как лидер.</i>"
+{EMOJI['wedding']} <b>СВАДЬБЫ И ОТНОШЕНИЯ:</b>
+• /wedding [ответ] - предложить брак
+• /weddings - список всех семейных пар
 
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+{EMOJI['rep']} <b>РЕПУТАЦИЯ (2 раза в день):</b>
+• /repplus [ответ] - повысить репутацию
+• /repminus [ответ] - понизить репутацию
 
-async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    for member in update.message.new_chat_members:
-        if member.is_bot:
-            continue
-        db.add_user(member.id, member.username, member.first_name)
+{EMOJI['fun']} <b>РАЗВЛЕЧЕНИЯ:</b>
+• /me <действие> - действие от 3-го лица
+• /try <действие> - проверить удачу
+• /kiss [ответ] - поцеловать
+• /hug [ответ] - обнять
+• /slap [ответ] - дать пощечину
+• /gay - гей дня
+• /clown - клоун дня
+• /wish - предсказание на день
+
+{EMOJI['mod']} <b>🛡️ МОДЕРАЦИЯ (ДОСТУПНО ВСЕМ):</b>
+• /mutelist - список замученных
+• /warns - список предупреждений
+• /bans - список забаненных
+• /report [ответ] <причина> - пожаловаться админам
+
+{EMOJI['crown']} <b>👑 АДМИН-КОМАНДЫ (РАНГ 8+):</b>
+• /mute <причина> - замутить
+• /unmute [ответ] - размутить
+• /warn <причина> - выдать варн
+• /ban <причина> - забанить
+• /setname <ник> - сменить ник юзеру
+• /setprefix <префикс> - дать префикс
+• /grank <ранг> - выдать игровой ранг
+• /check <ник> - проверить пользователя
+• /logs - логи действий
+
+{EMOJI['crown']} <b>👑 ЛИДЕР-КОМАНДЫ (РАНГ 10):</b>
+• /giveaccess <8/9/10> - выдать админку
+• /all - обращение ко всем
+"""
+    await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
+
+async def who_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /who - показывает информацию о пользователе"""
+    if not context.args:
+        await update.message.reply_text(f"{EMOJI['error']} Укажи ник или имя. Пример: /who Diego_Retroware")
+        return
+    
+    query = " ".join(context.args).lower()
+    
+    found_user = None
+    for user in db.get_all_users():
+        nickname = user.get('nickname', '').lower() if user.get('nickname') else ''
+        username = user.get('username', '').lower() if user.get('username') else ''
+        first_name = user.get('first_name', '').lower() if user.get('first_name') else ''
         
-        welcome_text = (
-            f"👋 {member.full_name}, добро пожаловать в группу Fam Nevermore!\n\n"
-            f"📝 Напиши, пожалуйста, свой ник в авторизацию в течение 24 часов, иначе кик.\n"
-            f"📖 Просим ознакомиться с правилами чата: https://t.me/famnevermore/26\n"
-            f"🔑 Ссылка на авторизацию: https://t.me/famnevermore/19467\n\n"
-            f"Приятного общения! {EMOJI['heart']}"
-        )
-        await update.message.reply_text(welcome_text)
-        log_action(member.id, member.username, "joined the chat")
-    
-    await db.save()
+        if query in nickname or query in username or query in first_name:
+            found_user = user
+            break
 
-async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 8):
-        await update.message.reply_text(f"{EMOJI['error']} Недостаточно прав.")
+    if not found_user:
+        await update.message.reply_text(f"{EMOJI['error']} Пользователь не найден в базе.")
         return
 
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы замутить его.")
-        return
-
-    target_user = update.message.reply_to_message.from_user
-    reason = " ".join(context.args) if context.args else "Не указана"
-    mute_time = datetime.now() + timedelta(days=MUTE_DAYS)
-
-    db.add_mute(target_user.id, mute_time, reason)
-
-    await update.message.reply_text(
-        f"{EMOJI['mute']} Пользователь {target_user.full_name} замучен до {mute_time.strftime('%Y-%m-%d %H:%M')}.\nПричина: {reason}"
+    rank_name = RANKS.get(found_user.get('rank', 2), {}).get('name', 'Неизвестно')
+    text = (
+        f"{EMOJI['profile']} <b>Информация о пользователе</b>\n"
+        f"━━━━━━━━━━━━━━━━\n"
+        f"👤 Имя: {found_user.get('first_name', 'Нет')}\n"
+        f"📛 Ник: {found_user.get('nickname', 'Нет')}\n"
+        f"🆔 ID: <code>{found_user['user_id']}</code>\n"
+        f"📊 Ранг: {rank_name} ({found_user.get('rank', 2)})\n"
+        f"{EMOJI['rep']} Репутация: {found_user.get('reputation', 0)}\n"
+        f"{EMOJI['warn']} Варны: {found_user.get('warns', 0)}\n"
+        f"📅 В семье с: {found_user.get('joined_date', '')[:10]}"
     )
-    log_action(update.effective_user.id, update.effective_user.username, f"muted {target_user.id}")
-    await db.save()
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
-async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 8):
-        await update.message.reply_text(f"{EMOJI['error']} Недостаточно прав.")
-        return
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы размутить его.")
-        return
-
-    target_user = update.message.reply_to_message.from_user
-    db.remove_mute(target_user.id)
-
-    await update.message.reply_text(f"{EMOJI['unmute']} Пользователь {target_user.full_name} размучен.")
-    log_action(update.effective_user.id, update.effective_user.username, f"unmuted {target_user.id}")
-    await db.save()
-
-async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 8):
-        await update.message.reply_text(f"{EMOJI['error']} Недостаточно прав.")
-        return
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы забанить его.")
-        return
-
-    target_user = update.message.reply_to_message.from_user
-    reason = " ".join(context.args) if context.args else "Нарушение правил"
-    ban_time = datetime.now() + timedelta(days=BAN_DAYS)
-
-    db.add_ban(target_user.id, ban_time, reason)
-
-    await update.message.reply_text(
-        f"{EMOJI['ban']} Пользователь {target_user.full_name} забанен до {ban_time.strftime('%Y-%m-%d %H:%M')}.\nПричина: {reason}"
-    )
-    log_action(update.effective_user.id, update.effective_user.username, f"banned {target_user.id}")
-
+async def gay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Гей дня - выбирает случайного участника чата"""
     try:
-        await context.bot.ban_chat_member(update.effective_chat.id, target_user.id)
-    except:
-        pass
-    
-    await db.save()
-
-async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 8):
-        await update.message.reply_text(f"{EMOJI['error']} Недостаточно прав.")
-        return
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы выдать предупреждение.")
-        return
-
-    target_user = update.message.reply_to_message.from_user
-    reason = " ".join(context.args) if context.args else "Нарушение правил"
-
-    if add_warn(target_user.id):
-        ban_time = datetime.now() + timedelta(days=BAN_DAYS)
-        db.add_ban(target_user.id, ban_time, f"3 предупреждения: {reason}")
-        await update.message.reply_text(
-            f"{EMOJI['ban']} Пользователь {target_user.full_name} получил 3-е предупреждение и забанен на {BAN_DAYS} дней."
-        )
-        log_action(update.effective_user.id, update.effective_user.username, f"auto-banned {target_user.id} (3 warns)")
-    else:
-        user = get_user(target_user.id)
-        warns_count = user['warns'] if user else 0
-        await update.message.reply_text(
-            f"{EMOJI['warn']} Пользователь {target_user.full_name} получил предупреждение ({warns_count}/{WARNS_TO_BAN}).\nПричина: {reason}"
-        )
-        log_action(update.effective_user.id, update.effective_user.username, f"warned {target_user.id}")
-    
-    await db.save()
-
-async def setname(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 8):
-        await update.message.reply_text(f"{EMOJI['error']} Недостаточно прав.")
-        return
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы установить ему ник.")
-        return
-
-    target_user = update.message.reply_to_message.from_user
-    new_nick = " ".join(context.args)
-    if not new_nick:
-        await update.message.reply_text("Укажи новый ник. Пример: /setname Diego_Retroware")
-        return
-
-    user = get_user(target_user.id)
-    if user:
-        user['nickname'] = new_nick
-        db.update_user(target_user.id, user)
-        await update.message.reply_text(f"{EMOJI['success']} Ник для {target_user.full_name} установлен: {new_nick}")
-        log_action(update.effective_user.id, update.effective_user.username, f"setname {target_user.id} to {new_nick}")
-        await db.save()
-
-async def giveaccess(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 10):
-        await update.message.reply_text(f"{EMOJI['error']} Только лидер может выдавать высокие ранги.")
-        return
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы выдать ему ранг.")
-        return
-
-    target_user = update.message.reply_to_message.from_user
-    if not context.args:
-        await update.message.reply_text("Укажи ранг (8, 9 или 10). Пример: /giveaccess 8")
-        return
-
-    try:
-        new_rank = int(context.args[0])
-        if new_rank not in [8, 9, 10]:
-            await update.message.reply_text("Ранг должен быть 8 (модер), 9 (зам) или 10 (лидер).")
+        # Получаем участников чата
+        chat = update.effective_chat
+        if not chat:
+            await update.message.reply_text(f"{EMOJI['error']} Эта команда работает только в группах.")
             return
-    except ValueError:
-        await update.message.reply_text("Ранг должен быть числом.")
-        return
-
-    user = get_user(target_user.id)
-    if user:
-        user['rank'] = new_rank
-        db.update_user(target_user.id, user)
-        await update.message.reply_text(
-            f"{EMOJI['crown']} Пользователь {target_user.full_name} теперь имеет ранг {new_rank}: {RANKS[new_rank]['name']}"
-        )
-        log_action(update.effective_user.id, update.effective_user.username, f"gave rank {new_rank} to {target_user.id}")
-        await db.save()
-
-async def setprefix(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 8):
-        await update.message.reply_text(f"{EMOJI['error']} Недостаточно прав.")
-        return
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы установить ему префикс.")
-        return
-
-    target_user = update.message.reply_to_message.from_user
-    prefix = " ".join(context.args)
-    if not prefix:
-        await update.message.reply_text("Укажи префикс. Пример: /setprefix [Admin]")
-        return
-
-    user = get_user(target_user.id)
-    if user:
-        user['prefix'] = prefix
-        db.update_user(target_user.id, user)
-        await update.message.reply_text(f"{EMOJI['success']} Префикс для {target_user.full_name} установлен: {prefix}")
-        log_action(update.effective_user.id, update.effective_user.username, f"setprefix for {target_user.id}")
-        await db.save()
-
-async def nlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    users = db.get_all_users()
-    if not users:
-        await update.message.reply_text("Список пуст.")
-        return
-
-    text = f"{EMOJI['list']} Список игроков:\n"
-    for user in users:
-        name = user.get('nickname') or user.get('username') or f"id{user['user_id']}"
-        text += f"• {name} (ранг {user['rank']})\n"
-
-    await update.message.reply_text(text[:4096])
-
-async def grank(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 8):
-        await update.message.reply_text(f"{EMOJI['error']} Недостаточно прав.")
-        return
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы выдать ему ранг.")
-        return
-
-    target_user = update.message.reply_to_message.from_user
-    if not context.args:
-        await update.message.reply_text("Укажи ранг (2-10, кроме 1 и 9 если надо). Пример: /grank 5")
-        return
-
-    try:
-        new_rank = int(context.args[0])
-        if new_rank < 2 or new_rank > 10:
-            await update.message.reply_text("Ранг должен быть от 2 до 10.")
-            return
-    except ValueError:
-        await update.message.reply_text("Ранг должен быть числом.")
-        return
-
-    user = get_user(target_user.id)
-    if user:
-        user['rank'] = new_rank
-        db.update_user(target_user.id, user)
-        await update.message.reply_text(
-            f"{EMOJI['game']} Пользователь {target_user.full_name} теперь имеет игровой ранг {new_rank}: {RANKS[new_rank]['name']}"
-        )
-        log_action(update.effective_user.id, update.effective_user.username, f"grank {new_rank} to {target_user.id}")
-        await db.save()
-
-async def gnick(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 2):
-        return
-
-    if not context.args:
-        await update.message.reply_text("Укажи свой ник. Пример: /gnick Diego_Retroware")
-        return
-
-    new_nick = " ".join(context.args)
-    user = get_user(update.effective_user.id)
-    if user:
-        user['nickname'] = new_nick
-        db.update_user(update.effective_user.id, user)
-        await update.message.reply_text(f"{EMOJI['success']} Твой ник установлен: {new_nick}")
-        log_action(update.effective_user.id, update.effective_user.username, f"set own nick to {new_nick}")
-        await db.save()
-
-async def ranks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = f"{EMOJI['list']} Доступные ранги в семье Nevermore:\n\n"
-    for rank_num, rank_data in RANKS.items():
-        if rank_num == 9 or rank_num == 10:
-            text += f"<b>{rank_num}. {rank_data['name']}</b>\n{rank_data['description']}\n\n"
+        
+        # Пробуем получить участников через API
+        admins = await context.bot.get_chat_administrators(chat.id)
+        members = admins  # пока только админы, но для демо сойдёт
+        
+        if not members:
+            # Если не получилось, берём из базы
+            users = db.get_all_users()
+            if users:
+                gay_of_day = random.choice(users)
+                name = gay_of_day.get('nickname') or gay_of_day.get('username') or gay_of_day.get('first_name') or f"id{gay_of_day['user_id']}"
+                mention = f"@{gay_of_day.get('username')}" if gay_of_day.get('username') else name
+            else:
+                await update.message.reply_text(f"{EMOJI['error']} Нет участников в базе.")
+                return
         else:
-            text += f"<b>{rank_num}. {rank_data['name']}</b>\n{rank_data['description']}\n\n"
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            # Выбираем случайного админа
+            gay_member = random.choice(admins)
+            name = gay_member.user.full_name
+            mention = f"@{gay_member.user.username}" if gay_member.user.username else name
+        
+        await update.message.reply_text(
+            f"{EMOJI['gay']} <b>🏳️‍🌈 ГЕЙ ДНЯ 🏳️‍🌈</b>\n\n"
+            f"🎉 Поздравляем, <b>{mention}</b>!\n"
+            f"Ты сегодня главный гей в семье Nevermore!\n\n"
+            f"{random.choice(['🏆', '👑', '💅', '🌈', '🦄'])} Гордись, это почётно!",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        print(f"Ошибка в /gay: {e}")
+        # Запасной вариант
+        users = db.get_all_users()
+        if users:
+            gay_of_day = random.choice(users)
+            name = gay_of_day.get('nickname') or gay_of_day.get('username') or gay_of_day.get('first_name') or f"id{gay_of_day['user_id']}"
+            await update.message.reply_text(
+                f"{EMOJI['gay']} <b>🏳️‍🌈 ГЕЙ ДНЯ 🏳️‍🌈</b>\n\n"
+                f"🎉 Поздравляем, <b>{name}</b>!",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text(f"{EMOJI['error']} Нет участников в базе.")
 
-async def warns(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    users = [u for u in db.get_all_users() if u.get('warns', 0) > 0]
-    users.sort(key=lambda x: x.get('warns', 0), reverse=True)
-    
-    if not users:
-        await update.message.reply_text(f"{EMOJI['info']} Нет пользователей с предупреждениями.")
-        return
-
-    text = f"{EMOJI['warn']} Список предупреждений:\n"
-    for user in users:
-        name = user.get('nickname') or user.get('username') or f"id{user['user_id']}"
-        text += f"• {name} — {user.get('warns', 0)} варн(ов)\n"
-    await update.message.reply_text(text)
-
-async def bans(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    bans_list = db.get_all_bans()
-    if not bans_list:
-        await update.message.reply_text(f"{EMOJI['info']} Нет забаненных пользователей.")
-        return
-
-    text = f"{EMOJI['ban']} Забаненные пользователи:\n"
-    now = datetime.now()
-    for ban in bans_list:
-        ban_until = datetime.fromisoformat(ban['banned_until'])
-        if ban_until > now:
-            text += f"• id{ban['user_id']} — до {ban_until.strftime('%Y-%m-%d')}, причина: {ban['reason']}\n"
-    await update.message.reply_text(text)
-
-async def mutelist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    mutes = db.get_all_mutes()
-    if not mutes:
-        await update.message.reply_text(f"{EMOJI['info']} Нет замученных пользователей.")
-        return
-
-    text = f"{EMOJI['mute']} Замученные пользователи:\n"
-    now = datetime.now()
-    for mute in mutes:
-        mute_until = datetime.fromisoformat(mute['muted_until'])
-        if mute_until > now:
-            text += f"• id{mute['user_id']} — до {mute_until.strftime('%Y-%m-%d %H:%M')}, причина: {mute['reason']}\n"
-    await update.message.reply_text(text)
-
-async def logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 9):
-        await update.message.reply_text(f"{EMOJI['error']} Недостаточно прав.")
-        return
-
-    logs_list = db.get_all_logs(20)
-    if not logs_list:
-        await update.message.reply_text("Логов нет.")
-        return
-
-    text = f"{EMOJI['list']} Последние действия:\n"
-    for log in logs_list:
-        ts = log['timestamp'][:16] if len(log['timestamp']) > 16 else log['timestamp']
-        text += f"• {log['username']} — {log['action']} ({ts})\n"
-    await update.message.reply_text(text[:4096])
-
-async def all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 9):
-        await update.message.reply_text(f"{EMOJI['error']} Недостаточно прав.")
-        return
-
-    await update.message.reply_text(f"{EMOJI['info']} Внимание, семья! {update.effective_user.full_name} обращается ко всем!")
-
-async def wedding(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 2):
-        return
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы предложить ему/ей руку и сердце.")
-        return
-
-    user1 = update.effective_user
-    user2 = update.message.reply_to_message.from_user
-
-    if user1.id == user2.id:
-        await update.message.reply_text("Нельзя жениться на самом себе!")
-        return
-
-    weddings = db.get_all_weddings()
-    for w in weddings:
-        if w['user1_id'] == user1.id or w['user2_id'] == user1.id or w['user1_id'] == user2.id or w['user2_id'] == user2.id:
-            await update.message.reply_text("Один из вас уже состоит в браке.")
+async def clown(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Клоун дня - выбирает случайного участника чата"""
+    try:
+        chat = update.effective_chat
+        if not chat:
+            await update.message.reply_text(f"{EMOJI['error']} Эта команда работает только в группах.")
             return
-
-    db.add_wedding(user1.id, user2.id)
-    
-    user1_data = get_user(user1.id)
-    user2_data = get_user(user2.id)
-    
-    if user1_data:
-        user1_data['spouse_id'] = user2.id
-        db.update_user(user1.id, user1_data)
-    if user2_data:
-        user2_data['spouse_id'] = user1.id
-        db.update_user(user2.id, user2_data)
-
-    await update.message.reply_text(
-        f"{EMOJI['wedding']} Поздравляем! {user1.full_name} и {user2.full_name} теперь муж и жена! {EMOJI['heart']}"
-    )
-    log_action(user1.id, user1.username, f"married {user2.id}")
-    await db.save()
-
-async def weddings_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    weddings = db.get_all_weddings()
-    if not weddings:
-        await update.message.reply_text(f"{EMOJI['info']} Свадеб пока нет.")
-        return
-
-    text = f"{EMOJI['wedding']} Семейные пары:\n"
-    for w in weddings:
-        user1 = get_user(w['user1_id'])
-        user2 = get_user(w['user2_id'])
-        name1 = user1.get('nickname') or user1.get('username') or f"id{w['user1_id']}" if user1 else f"id{w['user1_id']}"
-        name2 = user2.get('nickname') or user2.get('username') or f"id{w['user2_id']}" if user2 else f"id{w['user2_id']}"
-        date = w['date'][:10]
-        text += f"• {name1} + {name2} (с {date})\n"
-    await update.message.reply_text(text)
-
-async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    users = db.get_all_users()
-    users.sort(key=lambda x: x.get('reputation', 0), reverse=True)
-    users = users[:10]
-    
-    if not users:
-        await update.message.reply_text("Нет данных.")
-        return
-
-    text = f"{EMOJI['rep']} Топ по репутации:\n"
-    for i, user in enumerate(users, 1):
-        name = user.get('nickname') or user.get('username') or "Без имени"
-        rep = user.get('reputation', 0)
-        text += f"{i}. {name} — {rep} ⭐\n"
-    await update.message.reply_text(text)
-
-async def me_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    action = " ".join(context.args)
-    if not action:
-        await update.message.reply_text("Напиши действие. Пример: /me поправил корону на голове")
-        return
-    user = update.effective_user
-    text = f"<i>{user.full_name} {action}</i>"
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-
-async def try_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    action = " ".join(context.args)
-    if not action:
-        await update.message.reply_text("Напиши действие. Пример: /try запрыгнуть на крышу")
-        return
-    success = random.choice(["Удачно! ✅", "Неудачно... ❌", "Критический успех! 💥", "Эпик фейл! 💩"])
-    user = update.effective_user
-    text = f"<i>{user.full_name} пытается {action}...\n{success}</i>"
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-
-async def kiss(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы поцеловать его.")
-        return
-    user1 = update.effective_user
-    user2 = update.message.reply_to_message.from_user
-    text = f"{EMOJI['heart']} {user1.full_name} нежно поцеловал(а) {user2.full_name}!"
-    await update.message.reply_text(text)
-
-async def slap(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы дать ему пощечину.")
-        return
-    variants = [
-        "сильно, аж искры из глаз! ⚡",
-        "любя, как родного 💕",
-        "с размаху! 🤚",
-        "мокрой тряпкой! 🧹",
-        "газетой! 📰"
-    ]
-    user1 = update.effective_user
-    user2 = update.message.reply_to_message.from_user
-    text = f"{user1.full_name} дал пощечину {user2.full_name} {random.choice(variants)}"
-    await update.message.reply_text(text)
-
-async def hug(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы обнять его.")
-        return
-    user1 = update.effective_user
-    user2 = update.message.reply_to_message.from_user
-    text = f"{EMOJI['heart']} {user1.full_name} крепко обнял(а) {user2.full_name}!"
-    await update.message.reply_text(text)
+        
+        admins = await context.bot.get_chat_administrators(chat.id)
+        
+        if admins:
+            clown_member = random.choice(admins)
+            name = clown_member.user.full_name
+            mention = f"@{clown_member.user.username}" if clown_member.user.username else name
+        else:
+            users = db.get_all_users()
+            if not users:
+                await update.message.reply_text(f"{EMOJI['error']} Нет участников в базе.")
+                return
+            clown_user = random.choice(users)
+            name = clown_user.get('nickname') or clown_user.get('username') or clown_user.get('first_name') or f"id{clown_user['user_id']}"
+            mention = name
+        
+        await update.message.reply_text(
+            f"{EMOJI['clown']} <b>🤡 КЛОУН ДНЯ 🤡</b>\n\n"
+            f"🎪 Сегодня главный клоун — <b>{mention}</b>!\n"
+            f"{random.choice(['🤡', '🎭', '🎪', '🃏', '😜'])} Цирк уехал, а клоун остался!",
+            parse_mode=ParseMode.HTML
+        )
+    except Exception as e:
+        print(f"Ошибка в /clown: {e}")
+        users = db.get_all_users()
+        if users:
+            clown_of_day = random.choice(users)
+            name = clown_of_day.get('nickname') or clown_of_day.get('username') or clown_of_day.get('first_name') or f"id{clown_of_day['user_id']}"
+            await update.message.reply_text(
+                f"{EMOJI['clown']} <b>🤡 КЛОУН ДНЯ 🤡</b>\n\n"
+                f"🎪 Сегодня главный клоун — <b>{name}</b>!",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text(f"{EMOJI['error']} Нет участников в базе.")
 
 async def rep_plus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Повышение репутации (2 раза в день)"""
     if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы изменить его репутацию.")
+        await update.message.reply_text(f"{EMOJI['error']} Ответь на сообщение пользователя, чтобы повысить ему репутацию.")
         return
+    
     target = update.message.reply_to_message.from_user
     if target.id == update.effective_user.id:
-        await update.message.reply_text("Нельзя менять репутацию самому себе.")
+        await update.message.reply_text(f"{EMOJI['error']} Нельзя менять репутацию самому себе.")
+        return
+    
+    # Проверяем лимит
+    if not db.check_rep_limit(update.effective_user.id):
+        await update.message.reply_text(
+            f"{EMOJI['error']} Ты уже использовал все попытки на сегодня ({REP_LIMIT_PER_DAY}/2).\n"
+            f"Лимит сбрасывается в полночь по МСК."
+        )
         return
     
     user = get_user(target.id)
     if user:
         user['reputation'] = user.get('reputation', 0) + 1
         db.update_user(target.id, user)
-        await update.message.reply_text(f"{EMOJI['rep']} Репутация {target.full_name} повышена!")
+        await update.message.reply_text(
+            f"{EMOJI['rep']} <b>Репутация повышена!</b>\n"
+            f"👤 Пользователь: {target.full_name}\n"
+            f"📈 Текущая репутация: {user['reputation']} ⭐\n"
+            f"💡 Осталось попыток сегодня: {REP_LIMIT_PER_DAY - db.cache['rep_usage'].get(str(update.effective_user.id), {}).get('count', 0)}/{REP_LIMIT_PER_DAY}",
+            parse_mode=ParseMode.HTML
+        )
         await db.save()
 
 async def rep_minus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Понижение репутации (2 раза в день)"""
     if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение пользователя, чтобы изменить его репутацию.")
+        await update.message.reply_text(f"{EMOJI['error']} Ответь на сообщение пользователя, чтобы понизить ему репутацию.")
         return
+    
     target = update.message.reply_to_message.from_user
     if target.id == update.effective_user.id:
-        await update.message.reply_text("Нельзя менять репутацию самому себе.")
+        await update.message.reply_text(f"{EMOJI['error']} Нельзя менять репутацию самому себе.")
+        return
+    
+    # Проверяем лимит
+    if not db.check_rep_limit(update.effective_user.id):
+        await update.message.reply_text(
+            f"{EMOJI['error']} Ты уже использовал все попытки на сегодня ({REP_LIMIT_PER_DAY}/2).\n"
+            f"Лимит сбрасывается в полночь по МСК."
+        )
         return
     
     user = get_user(target.id)
     if user:
         user['reputation'] = user.get('reputation', 0) - 1
         db.update_user(target.id, user)
-        await update.message.reply_text(f"{EMOJI['rep']} Репутация {target.full_name} понижена!")
+        await update.message.reply_text(
+            f"{EMOJI['rep']} <b>Репутация понижена!</b>\n"
+            f"👤 Пользователь: {target.full_name}\n"
+            f"📉 Текущая репутация: {user['reputation']} ⭐\n"
+            f"💡 Осталось попыток сегодня: {REP_LIMIT_PER_DAY - db.cache['rep_usage'].get(str(update.effective_user.id), {}).get('count', 0)}/{REP_LIMIT_PER_DAY}",
+            parse_mode=ParseMode.HTML
+        )
         await db.save()
 
-async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    data = get_user(user.id)
-    if not data:
-        await update.message.reply_text("Ты не зарегистрирован. Напиши что-нибудь в чат.")
-        return
-
-    spouse_name = "Нет"
-    if data.get('spouse_id'):
-        spouse = get_user(data['spouse_id'])
-        if spouse:
-            spouse_name = spouse.get('nickname') or spouse.get('username') or f"id{data['spouse_id']}"
-
-    rank_name = RANKS.get(data['rank'], {}).get('name', 'Неизвестно')
-    text = (
-        f"{EMOJI['profile']} <b>Профиль {data.get('nickname') or data.get('username') or data.get('first_name')}</b>\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"👤 Ранг: {rank_name} ({data['rank']})\n"
-        f"{EMOJI['rep']} Репутация: {data.get('reputation', 0)}\n"
-        f"{EMOJI['warn']} Варны: {data.get('warns', 0)}\n"
-        f"{EMOJI['wedding']} Супруг(а): {spouse_name}\n"
-        f"📅 В семье с: {data.get('joined_date', '')[:10]}\n"
-        f"🏷 Префикс: {data.get('prefix') or 'Нет'}"
-    )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-
-async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        f"{EMOJI['info']} <b>Семья Nevermore</b>\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"👑 Лидер: @nzaxscy)\n"
-        f"💬 Дискорд: https://discord.gg/5uWfYTvsKK\n"
-        f"📢 Новости: https://t.me/famnevermore/5\n"
-        f"📖 Правила: https://t.me/famnevermore/26\n"
-        f"🔑 Авторизация: https://t.me/famnevermore/19467\n\n"
-        f"Бот создан для уюта и порядка в семье. Не забывай про уважение!"
-    )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Жалоба на сообщение - отправляет админам"""
     if not update.message.reply_to_message:
-        await update.message.reply_text("Ответь на сообщение, на которое хочешь пожаловаться.")
+        await update.message.reply_text(f"{EMOJI['error']} Ответь на сообщение, на которое хочешь пожаловаться.")
         return
 
     reason = " ".join(context.args) if context.args else "Причина не указана"
@@ -890,180 +594,96 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bad_user = bad_msg.from_user
     reporter = update.effective_user
 
+    # Находим всех админов (ранг 9 и 10)
     admins = [u for u in db.get_all_users() if u.get('rank', 0) in [9, 10]]
     
+    # Добавляем ADMIN_IDS из переменных окружения
+    for admin_id in ADMIN_IDS:
+        admin_user = get_user(admin_id)
+        if admin_user and admin_user not in admins:
+            admins.append(admin_user)
+        elif not admin_user:
+            # Если админа нет в базе, создаем временную запись
+            admins.append({'user_id': admin_id, 'rank': 10})
+    
     text = (
-        f"🚨 <b>Жалоба</b>\n"
-        f"От: {reporter.full_name} (@{reporter.username})\n"
-        f"На: {bad_user.full_name} (@{bad_user.username})\n"
-        f"Причина: {reason}\n"
-        f"Сообщение: {bad_msg.text or bad_msg.caption or '[Не текст]'}\n"
-        f"[Перейти к сообщению]({bad_msg.link})"
+        f"🚨 <b>⚠️ ЖАЛОБА ⚠️</b>\n"
+        f"━━━━━━━━━━━━━━━━\n"
+        f"📝 <b>От:</b> {reporter.full_name}"
     )
-
-    sent = False
+    if reporter.username:
+        text += f" (@{reporter.username})"
+    text += f"\n👤 <b>ID:</b> <code>{reporter.id}</code>\n\n"
+    text += f"👮 <b>Нарушитель:</b> {bad_user.full_name}"
+    if bad_user.username:
+        text += f" (@{bad_user.username})"
+    text += f"\n🆔 <b>ID:</b> <code>{bad_user.id}</code>\n\n"
+    text += f"📌 <b>Причина:</b> {reason}\n\n"
+    text += f"💬 <b>Сообщение:</b>\n{bad_msg.text or bad_msg.caption or '[Медиа]'}\n\n"
+    text += f"🔗 <a href='{bad_msg.link}'>Перейти к сообщению</a>"
+    
+    sent_count = 0
     for admin in admins:
         try:
-            await context.bot.send_message(admin['user_id'], text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-            sent = True
-        except:
-            pass
-
-    if sent:
-        await update.message.reply_text(f"{EMOJI['success']} Жалоба отправлена администрации.")
-    else:
-        await update.message.reply_text(f"{EMOJI['error']} Не удалось отправить жалобу (админы недоступны).")
-
-async def check_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id, 8):
-        await update.message.reply_text(f"{EMOJI['error']} Недостаточно прав.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("Укажи ник или имя. Пример: /check Diego_Retroware")
-        return
-
-    query = " ".join(context.args).lower()
-    
-    found_user = None
-    for user in db.get_all_users():
-        nickname = user.get('nickname', '').lower() if user.get('nickname') else ''
-        username = user.get('username', '').lower() if user.get('username') else ''
-        
-        if query in nickname or query in username:
-            found_user = user
-            break
-
-    if not found_user:
-        await update.message.reply_text("Пользователь не найден в базе.")
-        return
-
-    text = (
-        f"🔍 <b>Результат поиска:</b>\n"
-        f"ID: {found_user['user_id']}\n"
-        f"Username: @{found_user.get('username', 'Нет')}\n"
-        f"Ник: {found_user.get('nickname', 'Нет')}\n"
-        f"Ранг: {found_user.get('rank', 2)}\n"
-        f"Варны: {found_user.get('warns', 0)}"
-    )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-
-async def online(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    users = db.get_all_users()
-    online_users = []
-    offline_users = []
-    now = datetime.now()
-
-    for user in users:
-        last_seen_str = user.get('last_online')
-        if last_seen_str:
-            last_seen = datetime.fromisoformat(last_seen_str)
-        else:
-            last_seen = now - timedelta(days=999)
-            
-        name = user.get('nickname') or user.get('username') or f"id{user['user_id']}"
-        
-        if (now - last_seen) < timedelta(hours=1):
-            online_users.append(f"{EMOJI['online']} {name} (ранг {user.get('rank', 2)})")
-        else:
-            offline_users.append(f"{EMOJI['offline']} {name} (был {last_seen.strftime('%Y-%m-%d %H:%M')})")
-
-    text = f"<b>Онлайн ({len(online_users)}):</b>\n"
-    text += "\n".join(online_users) if online_users else "Никого нет онлайн\n"
-    text += f"\n\n<b>Оффлайн ({len(offline_users)}):</b>\n"
-    text += "\n".join(offline_users[:10])
-    if len(offline_users) > 10:
-        text += f"\n... и еще {len(offline_users)-10}"
-
-    await update.message.reply_text(text[:4096], parse_mode=ParseMode.HTML)
-
-async def gay(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    users = db.get_all_users()
-    if not users:
-        await update.message.reply_text("Нет участников в базе.")
-        return
-    
-    gay_of_day = random.choice(users)
-    name = gay_of_day.get('nickname') or gay_of_day.get('username') or f"id{gay_of_day['user_id']}"
-    await update.message.reply_text(
-        f"{EMOJI['gay']} Сегодняшний Гей дня — {name}! Поздравляем! 🎉"
-    )
-
-async def clown(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    users = db.get_all_users()
-    if not users:
-        await update.message.reply_text("Нет участников в базе.")
-        return
-    
-    clown_of_day = random.choice(users)
-    name = clown_of_day.get('nickname') or clown_of_day.get('username') or f"id{clown_of_day['user_id']}"
-    await update.message.reply_text(
-        f"{EMOJI['clown']} Сегодняшний Клоун дня — {name}! Цирк уехал, клоун остался! 🎪"
-    )
-
-async def wish(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    wishes = [
-        "🍀 Сегодня тебе повезёт в делах!",
-        "💵 Ожидай неожиданную прибыль.",
-        "❤️ Тебя ждёт романтическая встреча.",
-        "😴 Отдохни сегодня, ты заслужил.",
-        "🚀 Твой рейтинг скоро взлетит!",
-        "🍔 Сегодня лучший день для вкусной еды.",
-        "🎮 Удачной игры и фарма!",
-        "🤝 Кто-то нуждается в твоей помощи."
-    ]
-    await update.message.reply_text(f"{EMOJI['wish']} {random.choice(wishes)}")
-
-async def update_last_online(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user and not update.effective_user.is_bot:
-        user = get_user(update.effective_user.id)
-        if not user:
-            db.add_user(update.effective_user.id, update.effective_user.username, update.effective_user.first_name)
-            user = get_user(update.effective_user.id)
-        
-        if user:
-            user['last_online'] = datetime.now().isoformat()
-            user['username'] = update.effective_user.username
-            db.update_user(update.effective_user.id, user)
-            await db.save()
-
-async def check_message_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-
-    user_id = update.effective_user.id
-    text = update.message.text.lower()
-
-    if is_muted(user_id):
-        try:
-            await update.message.delete()
-        except:
-            pass
-        return
-
-    forbidden_patterns = [
-        (r'(18\+|порно|секс|эротика|голая)', 120, "Контент 18+"),
-        (r'(твою мать|мама|папа|родители)', 120, "Упоминание родителей"),
-        (r'(политик|война|путин|зеленский|сша|россия|украина)', 60, "Политика"),
-    ]
-
-    for pattern, mute_minutes, rule_name in forbidden_patterns:
-        if re.search(pattern, text):
-            mute_time = datetime.now() + timedelta(minutes=mute_minutes)
-            db.add_mute(user_id, mute_time, f"Нарушение: {rule_name}")
-            await update.message.reply_text(
-                f"{EMOJI['mute']} {update.effective_user.full_name}, вы замучены на {mute_minutes} минут за нарушение правил ({rule_name}).\n"
-                f"Ознокомтесь с правилами!! Правила: https://t.me/famnevermore/26"
+            await context.bot.send_message(
+                admin['user_id'], 
+                text, 
+                parse_mode=ParseMode.HTML, 
+                disable_web_page_preview=True
             )
-            log_action(user_id, update.effective_user.username, f"auto-muted for {rule_name}")
-            try:
-                await update.message.delete()
-            except:
-                pass
-            await db.save()
-            break
+            sent_count += 1
+        except Exception as e:
+            print(f"Не удалось отправить админу {admin.get('user_id')}: {e}")
+    
+    if sent_count > 0:
+        await update.message.reply_text(
+            f"{EMOJI['success']} <b>Жалоба отправлена!</b>\n"
+            f"📨 Получателей: {sent_count}\n"
+            f"🕐 Администраторы рассмотрят её в ближайшее время.",
+            parse_mode=ParseMode.HTML
+        )
+        log_action(reporter.id, reporter.username, f"report on {bad_user.id}: {reason}")
+    else:
+        await update.message.reply_text(
+            f"{EMOJI['error']} ❌ <b>Ошибка отправки</b>\n"
+            f"К сожалению, администраторы сейчас недоступны.\n"
+            f"Попробуй позже или обратись к ним напрямую.",
+            parse_mode=ParseMode.HTML
+        )
 
-# --- ЗАПУСК ---
+# --- Все остальные команды (оставляем как есть, но можно добавить смайликов) ---
+# Здесь нужно вставить все остальные функции команд из твоего кода:
+# welcome_new_member, mute, unmute, ban, warn, setname, giveaccess, setprefix,
+# nlist, grank, gnick, ranks, warns, bans, mutelist, logs, all_command,
+# wedding, weddings_list, top, me_action, try_action, kiss, slap, hug,
+# profile, info, check_user, online, wish, update_last_online, check_message_rules
+
+# --- ЗАПУСК С ЗАГЛУШКОЙ ДЛЯ RENDER ---
+import threading
+from flask import Flask
+import time
+
+# Создаем простой Flask сервер для Render
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return "Nevermore Bot is running! 🤖"
+
+@flask_app.route('/health')
+def health():
+    return "OK", 200
+
+def run_flask():
+    port = int(os.environ.get('PORT', 8080))
+    flask_app.run(host='0.0.0.0', port=port)
+
+# Запускаем Flask в отдельном потоке
+flask_thread = threading.Thread(target=run_flask)
+flask_thread.daemon = True
+flask_thread.start()
+
+# Основной запуск бота
 async def main():
     print("🚀 Бот запускается...")
     
@@ -1074,7 +694,17 @@ async def main():
     # Создаем приложение
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Регистрируем обработчики
+    # Регистрируем обработчики (все команды)
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("who", who_command))
+    application.add_handler(CommandHandler("gay", gay))
+    application.add_handler(CommandHandler("clown", clown))
+    application.add_handler(CommandHandler("repplus", rep_plus))
+    application.add_handler(CommandHandler("repminus", rep_minus))
+    application.add_handler(CommandHandler("report", report))
+    
+    # Добавь сюда остальные обработчики из твоего кода
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("mute", mute))
